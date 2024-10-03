@@ -13,7 +13,7 @@ Screen Shot:
 How To Play:
 
 <!-- (TODO: describe the controls and (if needed) goals/strategy.) -->
-Use wasd to move the squirrel (the squirrel will move by it's own orientation).
+Use wasd to move the squirrel (the squirrel will move by it's own orientation). Press e to interact/collect the items.
 You're goal is to collect all 4 items: an apple, worm, acorn, and mushroom, to create a glorious feast!
 
 <!-- Sources: (TODO: list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.) -->
