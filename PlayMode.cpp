@@ -1,6 +1,8 @@
 #include "PlayMode.hpp"
 
 #include "LitColorTextureProgram.hpp"
+// #include "TextureProgram.hpp"
+#include "renderText.hpp"
 
 #include "DrawLines.hpp"
 #include "Mesh.hpp"
@@ -13,23 +15,23 @@
 
 #include <random>
 
-GLuint phonebank_meshes_for_lit_color_texture_program = 0;
-Load< MeshBuffer > phonebank_meshes(LoadTagDefault, []() -> MeshBuffer const * {
-	MeshBuffer const *ret = new MeshBuffer(data_path("phone-bank.pnct"));
-	phonebank_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
+GLuint tree_meshes_for_lit_color_texture_program = 0;
+Load< MeshBuffer > tree_meshes(LoadTagDefault, []() -> MeshBuffer const * {
+	MeshBuffer const *ret = new MeshBuffer(data_path("tree.pnct"));
+	tree_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
 	return ret;
 });
 
-Load< Scene > phonebank_scene(LoadTagDefault, []() -> Scene const * {
-	return new Scene(data_path("phone-bank.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
-		Mesh const &mesh = phonebank_meshes->lookup(mesh_name);
+Load< Scene > tree_scene(LoadTagDefault, []() -> Scene const * {
+	return new Scene(data_path("tree.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
+		Mesh const &mesh = tree_meshes->lookup(mesh_name);
 
 		scene.drawables.emplace_back(transform);
 		Scene::Drawable &drawable = scene.drawables.back();
 
 		drawable.pipeline = lit_color_texture_program_pipeline;
 
-		drawable.pipeline.vao = phonebank_meshes_for_lit_color_texture_program;
+		drawable.pipeline.vao = tree_meshes_for_lit_color_texture_program;
 		drawable.pipeline.type = mesh.type;
 		drawable.pipeline.start = mesh.start;
 		drawable.pipeline.count = mesh.count;
@@ -38,16 +40,32 @@ Load< Scene > phonebank_scene(LoadTagDefault, []() -> Scene const * {
 });
 
 WalkMesh const *walkmesh = nullptr;
-Load< WalkMeshes > phonebank_walkmeshes(LoadTagDefault, []() -> WalkMeshes const * {
-	WalkMeshes *ret = new WalkMeshes(data_path("phone-bank.w"));
-	walkmesh = &ret->lookup("WalkMesh");
+Load< WalkMeshes > tree_walkmeshes(LoadTagDefault, []() -> WalkMeshes const * {
+	WalkMeshes *ret = new WalkMeshes(data_path("tree.w"));
+	walkmesh = &ret->lookup("Sphere.019");
 	return ret;
 });
 
-PlayMode::PlayMode() : scene(*phonebank_scene) {
-	//create a player transform:
-	scene.transforms.emplace_back();
-	player.transform = &scene.transforms.back();
+
+void update_camera(glm::vec3 player, Scene::Camera &camera){
+	glm::vec2 normalized = glm::normalize(glm::vec2(player.x,player.y)); 
+	camera.transform->position = glm::vec3(normalized.x* 15,normalized.y*15,player.z);
+	camera.transform->rotation = glm::angleAxis(glm::pi<float>()- glm::atan(player.x,player.y), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::angleAxis(glm::radians(91.0f), glm::vec3(1.0f, 0.0f, 0.0f)); //truely painful
+}
+
+PlayMode::PlayMode() : scene(*tree_scene) {
+	for (auto &transform : scene.transforms) {
+		if (transform.name == "player") {
+			player.transform = &transform;
+			}
+		else if (transform.name == "worm" ||
+				transform.name == "apple" ||
+				transform.name == "acorn" ||
+				transform.name == "mushroom"){
+					Collectable newcollect;
+					newcollect.transform= &transform;
+					collectables.emplace_back(newcollect);}
+	}
 
 	//create a player camera attached to a child of the player transform:
 	scene.transforms.emplace_back();
@@ -55,17 +73,13 @@ PlayMode::PlayMode() : scene(*phonebank_scene) {
 	player.camera = &scene.cameras.back();
 	player.camera->fovy = glm::radians(60.0f);
 	player.camera->near = 0.01f;
-	player.camera->transform->parent = player.transform;
-
-	//player's eyes are 1.8 units above the ground:
-	player.camera->transform->position = glm::vec3(0.0f, 0.0f, 1.8f);
-
-	//rotate camera facing direction (-z) to player facing direction (+y):
-	player.camera->transform->rotation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	 
+	update_camera(player.transform->position,*(player.camera));
 
 	//start player walking at nearest walk point:
 	player.at = walkmesh->nearest_walk_point(player.transform->position);
-
+	startingpos = player.transform->position;
+	printf("%f %f %f\n",startingpos.x,startingpos.y,startingpos.z);
 }
 
 PlayMode::~PlayMode() {
@@ -74,10 +88,7 @@ PlayMode::~PlayMode() {
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
 
 	if (evt.type == SDL_KEYDOWN) {
-		if (evt.key.keysym.sym == SDLK_ESCAPE) {
-			SDL_SetRelativeMouseMode(SDL_FALSE);
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_a) {
+		if (evt.key.keysym.sym == SDLK_a) {
 			left.downs += 1;
 			left.pressed = true;
 			return true;
@@ -93,6 +104,10 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			down.downs += 1;
 			down.pressed = true;
 			return true;
+		} else if (evt.key.keysym.sym == SDLK_e) {
+			interact.downs += 1;
+			interact.pressed = true;
+			return true;
 		}
 	} else if (evt.type == SDL_KEYUP) {
 		if (evt.key.keysym.sym == SDLK_a) {
@@ -107,28 +122,8 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (evt.key.keysym.sym == SDLK_s) {
 			down.pressed = false;
 			return true;
-		}
-	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
-		if (SDL_GetRelativeMouseMode() == SDL_FALSE) {
-			SDL_SetRelativeMouseMode(SDL_TRUE);
-			return true;
-		}
-	} else if (evt.type == SDL_MOUSEMOTION) {
-		if (SDL_GetRelativeMouseMode() == SDL_TRUE) {
-			glm::vec2 motion = glm::vec2(
-				evt.motion.xrel / float(window_size.y),
-				-evt.motion.yrel / float(window_size.y)
-			);
-			glm::vec3 upDir = walkmesh->to_world_smooth_normal(player.at);
-			player.transform->rotation = glm::angleAxis(-motion.x * player.camera->fovy, upDir) * player.transform->rotation;
-
-			float pitch = glm::pitch(player.camera->transform->rotation);
-			pitch += motion.y * player.camera->fovy;
-			//camera looks down -z (basically at the player's feet) when pitch is at zero.
-			pitch = std::min(pitch, 0.95f * 3.1415926f);
-			pitch = std::max(pitch, 0.05f * 3.1415926f);
-			player.camera->transform->rotation = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
-
+		} else if (evt.key.keysym.sym == SDLK_e) {
+			interact.pressed = false;
 			return true;
 		}
 	}
@@ -210,6 +205,7 @@ void PlayMode::update(float elapsed) {
 				walkmesh->to_world_smooth_normal(player.at) //smoothed up vector at walk location
 			);
 			player.transform->rotation = glm::normalize(adjust * player.transform->rotation);
+			update_camera(player.transform->position,*(player.camera));
 		}
 
 		/*
@@ -227,6 +223,27 @@ void PlayMode::update(float elapsed) {
 	right.downs = 0;
 	up.downs = 0;
 	down.downs = 0;
+
+	collected = std::max(0.0f,collected-elapsed);
+	if (interact.pressed){
+	bool collect = true;
+	for (Collectable i : collectables){
+		if (!(i.collected) and glm::length(i.transform->position - player.transform->position)<3.0f){
+				// update their location
+				i.collected = true;
+				i.transform->position = startingpos;
+				collected = 3.0f;
+				printstatement = i.transform->name+ " was collected!";
+				break;
+			}
+		collect &= i.collected;
+	}
+	if (collect){
+		collected = 5.0f;
+		printstatement = "You Win! Everything was collected!";
+	}
+	}
+	interact.downs = 0;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
@@ -262,7 +279,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	}
 	*/
 
-	{ //use DrawLines to overlay some text:
+	if (collected>0.0f){ //use DrawLines to overlay some text:
 		glDisable(GL_DEPTH_TEST);
 		float aspect = float(drawable_size.x) / float(drawable_size.y);
 		DrawLines lines(glm::mat4(
@@ -273,15 +290,15 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		));
 
 		constexpr float H = 0.09f;
-		lines.draw_text("Mouse motion looks; WASD moves; escape ungrabs mouse",
+		lines.draw_text(printstatement,
 			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-		float ofs = 2.0f / drawable_size.y;
-		lines.draw_text("Mouse motion looks; WASD moves; escape ungrabs mouse",
-			glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + + 0.1f * H + ofs, 0.0),
-			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
+		// float ofs = 2.0f / drawable_size.y;
+		// // lines.draw_text("Mouse motion looks; WASD moves; escape ungrabs mouse",
+		// // 	glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + + 0.1f * H + ofs, 0.0),
+		// // 	glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
+		// // 	glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 	}
 	GL_ERRORS();
 }

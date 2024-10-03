@@ -23,7 +23,7 @@ struct PlayMode : Mode {
 	struct Button {
 		uint8_t downs = 0;
 		uint8_t pressed = 0;
-	} left, right, down, up;
+	} left, right, down, up,interact;
 
 	//local copy of the game scene (so code can change it during gameplay):
 	Scene scene;
@@ -36,4 +36,14 @@ struct PlayMode : Mode {
 		//camera is at player's head and will be pitched by mouse up/down motion:
 		Scene::Camera *camera = nullptr;
 	} player;
+	glm::vec3 startingpos;
+
+	//collectables info:
+	struct Collectable {
+		Scene::Transform *transform;
+		bool collected=false;
+	};
+	std::vector<Collectable> collectables;
+	float collected = 0.0f;
+	std::string printstatement = "";
 };
